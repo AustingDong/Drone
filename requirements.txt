@@ -1,3 +1,4 @@
 djitellopy
 cv2
 numpy
+pygame==2.4.0
