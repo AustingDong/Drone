@@ -1,0 +1,35 @@
+Estimate
+
+    x^-: 先验估计
+    x^ : 后验估计
+    y  : 观测值
+    K  : 卡尔曼增益，权重项
+    H  : 状态转移矩阵
+
+    x^k = Ax^k-1 + Buk + Kk(yk - C(Ax^k-1 + Buk))
+        = x^-k + Kk(yk - Cx^-k)
+        = Predict + Update
+
+Core:
+    Predict:
+        x^-k = Ax^k-1 + Buk ----> 状态转移
+
+        P-k = A(Pk-1)(AT) + Q ----> 协方差矩阵，表示变量间关系
+        Q : 噪音矩阵 
+
+
+    Update:
+        Kk = [(P-k)(HT)] /[ H(P-k)(HT)+R]
+        x^k = x^-k + Kk(yk - Hx^-k)
+        Pk = (I-KkH)P-k
+
+
+Situations of Tracking Problem
+    Mean : x = [cx, cy, r, h, vx, vy, vr, vh]
+            cx, cy : 中心坐标
+            r : 宽高比
+            h : 高
+            vx, vy, vr, vh : 各自的速度
+
+
+            
