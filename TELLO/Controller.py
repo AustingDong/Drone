@@ -8,6 +8,8 @@ import math
 from detect import Face_detector
 from kalman_filter import KalmanFilter
 from target_tracking import tlbr_to_xyah, xyah_to_tlbr, Processing, judge, cood_to_xywh
+from Following import following
+from Mapping import drawPoint, drawPoints, directFacing
 
 kp.init()
 me = tello.Tello()
@@ -22,14 +24,14 @@ print(me.get_battery())
 
 
 ############### PARAS ###############
-img_width = 640
-img_height = 640
+img_width = 320
+img_height = 320
 img_center = [int(img_width/2), int(img_height/2)]
 
 
 forward_speed = 234
 angular_speed = 720
-interval = 0.02
+interval = 0.01
 
 distance_interval = forward_speed * interval
 angular_interval = angular_speed * interval
@@ -38,39 +40,32 @@ x,y = 500,500
 ang = 0
 yaw = 0
 
+CUDA = False
+LOG = False
+LOCATE = False
 
-recognize_mode = False
-track_mode = False
+SPEED = 60
+
+recognize_mode = True
+track_mode = True
 following_mode = False
 state = False
 mean_tracking, covariance_tracking = None, None
 ctrl = None
-###################################
-
-
 points = []
 
-def drawPoint(locate_map, point):
-    cv2.circle(locate_map, (point[0], point[1]), 10, (255, 0, 0), cv2.FILLED)  #BGR
+#############Hardware######################
 
-
-    
-
-def drawPoints(locate_map, points):
-    for point in points:
-        cv2.circle(locate_map, (point[0], point[1]), 1, (255, 255, 255), cv2.FILLED)  #BGR
-    cv2.putText(locate_map, f'({(points[-1][0] - 500)/100}m, {-(points[-1][1] - 500)/100}m)', (points[-1][0]+10, points[-1][1]+30), 0, 1, (0, 255, 255))
-
-
-def directFacing(locate_map, point, facing_point):
-    cv2.line(locate_map, (point[0], point[1]),(facing_point[0], facing_point[1]), (0, 0, 255), thickness=1, shift=0)
+if CUDA:
+    cv2.cuda.setDevice(0)
+    gpu_frame = cv2.cuda_GpuMat()
 
 
 
 ####################################
 def getKeyboardInput(control):
     lr, fb, ud, yv = 0,0,0,0
-    speed = 50
+    speed = SPEED
     d = 0
     global x, y, yaw, ang, recognize_mode, track_mode, following_mode
     
@@ -161,42 +156,6 @@ def form_center(img, center):
 
 
 
-def following(trackbox_center, trackbox_height):
-    sgn = ''
-
-    disturb = 50
-
-    tb_x = trackbox_center[0]
-    tb_y = trackbox_center[1]
-
-    ct_x = img_center[0]
-    ct_y = img_center[1]
-
-    if (tb_x == 0 and tb_y == 0):
-        return sgn
-
-    if(tb_x+disturb < ct_x): sgn = 'd'
-    elif(tb_x-disturb > ct_x): sgn = 'a'
-
-    # if(tb_y < ct_y): sgn = 'DOWN'
-    # elif(tb_y > ct_y): sgn = 'UP'
-
-
-    return sgn
-
-    
-    
-
-
-
-
-
-
-
-
-
-
-
 
 while True:
     if not following_mode:
@@ -206,23 +165,30 @@ while True:
     
 
     #################locate#######################
-    locate_map = np.zeros((1000, 1000, 3), np.uint8)
+    if LOCATE:
+        locate_map = np.zeros((1000, 1000, 3), np.uint8)
 
-    point = (vals[4], vals[5])
-    facing_point = (vals[6], vals[7])
-    points.append(point)
-    
-    drawPoint(locate_map, point)
-    drawPoints(locate_map, points)
-    directFacing(locate_map, point, facing_point)
+        point = (vals[4], vals[5])
+        facing_point = (vals[6], vals[7])
+        points.append(point)
+        
+        drawPoint(locate_map, point)
+        drawPoints(locate_map, points)
+        directFacing(locate_map, point, facing_point)
 
-    cv2.imshow("locate", locate_map)
+        cv2.imshow("locate", locate_map)
 
 
 
     ###############images########################
     img = me.get_frame_read().frame
-    img = cv2.resize(img, (img_width, img_height))
+    if CUDA:
+        gpu_frame.upload(img)
+        gpu_frame = cv2.cuda.resize(gpu_frame, (img_width, img_height))
+        img = gpu_frame.download()
+    else:
+        img = cv2.resize(img, (img_width, img_height))
+        
     form_center(img, img_center)
 
     #detect mode
@@ -258,13 +224,15 @@ while True:
             box_track = xyah_to_tlbr(mean_show[:4])
 
             xywh = cood_to_xywh(box_track)
-            print("-------xywh:", xywh)
+
+            if LOG:
+                print("-------xywh:", xywh)
             cv2.rectangle(img, (int(xywh[0]), int(xywh[1]), int(xywh[2]), int(xywh[3])), color=(0,255,0), thickness=5)
             
             #following mode
             if following_mode:
                 # ctrl = following([abs(x2-x1)/2, abs(y2-y1)/2], abs(y2-y1))
-                ctrl = following([xywh[0], xywh[1]], xywh[3])
+                ctrl = following([xywh[0], xywh[1]], xywh[3], img_center)
                 sleep(0.3)
 
 
